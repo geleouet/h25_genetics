@@ -10,22 +10,35 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import javax.imageio.ImageIO;
 
 public class H25Genetics {
-
+	
+	static int N_GEN = 10000;
 	static int N_RECTS = 50;
-	static int N_POP = 1000;
+	static int N_POP = 500;
 	static int WIDTH = 100;
 	static int HEIGHT = 100;
-	static int MUTATION_PROB = 2;
+	static double[][] weight;
+	static int MUTATION_PROB_PER_1000 = 5;
+	
+	static final int MUTATION_Z     = 10;
+	static final int MUTATION_ALPHA = 20;
+	static final int MUTATION_COLOR = 20;
+	static final int MUTATION_X     = 10;
+	static final int MUTATION_Y     = 10;
+	static final int MUTATION_H     = 10;
+	static final int MUTATION_W     = 10;
 
 	static final Random random = new Random(1982);
 	
@@ -61,7 +74,36 @@ public class H25Genetics {
 		}
 		
 		public Chromosome mutate() {
-			if (random.nextInt(100) < MUTATION_PROB) {
+			if (random.nextInt(1000) < MUTATION_PROB_PER_1000) {
+				int r = random.nextInt(100);
+				if (r < MUTATION_Z) {
+					return new Chromosome(this.x, this.y, this.w, this.h, this.c, this.a, random.nextInt(255));
+				} else { r -= MUTATION_Z; }
+				
+				if (r < MUTATION_ALPHA) {
+					return new Chromosome(this.x, this.y, this.w, this.h, this.c, random.nextInt(255), this.z);
+				} else { r -= MUTATION_ALPHA; }
+
+				if (r < MUTATION_COLOR) {
+					return new Chromosome(this.x, this.y, this.w, this.h,  random.nextInt(255), this.a, this.z);
+				} else { r -= MUTATION_COLOR; }
+				
+				if (r < MUTATION_X) {
+					return new Chromosome(random.nextInt(WIDTH - this.w), this.y, this.w, this.h,  this.c, this.a, this.z);
+				} else { r -= MUTATION_X; }
+
+				if (r < MUTATION_Y) {
+					return new Chromosome(this.x, random.nextInt(HEIGHT - this.h), this.w, this.h,  this.c, this.a, this.z);
+				} else { r -= MUTATION_Y; }
+				
+				if (r < MUTATION_W) {
+					return new Chromosome(this.x, this.y, random.nextInt(WIDTH - x), this.h,  this.c, this.a, this.z);
+				} else { r -= MUTATION_W; }
+				
+				if (r < MUTATION_H) {
+					return new Chromosome(this.x, this.y, this.w, random.nextInt(HEIGHT - y),  this.c, this.a, this.z);
+				} else { r -= MUTATION_H; }
+				
 				return generate();
 			}
 			return new Chromosome(this.x, this.y, this.w, this.h, this.c, this.a, this.z);
@@ -116,10 +158,30 @@ public class H25Genetics {
 			for (int i = 0; i < WIDTH; i++) {
 				for (int j = 0; j < HEIGHT; j++) {
 					double o = origine[i][j];
-					e += sq((o - tmp[i][j])/(o + 0.0001));
+					//e += sq((o - tmp[i][j])/(o + tmp[i][j] + 0.0001));
+					double ev = sq((o - tmp[i][j]));
+					ev += sq(f0(o) - f0(tmp[i][j]));
+					ev += sq(f1(o) - f1(tmp[i][j]));
+					ev += sq(f2(o) - f2(tmp[i][j]));
+					ev += sq(g(o) - g(tmp[i][j]));
+					
+					e += weight[i][j] * ev;
 				}
 			}
 			return e;
+		}
+
+		private int f0(double i) {
+			return 5 * (i < 128 ? 0 : 1);
+		}
+		private int f1(double i) {
+			return 4 * (i < 120 ? 0 : 1);
+		}
+		private int f2(double i) {
+			return 4 * (i < 136 ? 0 : 1);
+		}
+		private int g(double i) {
+			return 3 * (i < 64 ? 0 : i < 128 ? 1 : i < 192 ? 2 : 3);
 		}
 
 		public ADN mutate() {
@@ -128,7 +190,7 @@ public class H25Genetics {
 	}
 
 	
-	public static void main(String[] args) throws IOException {
+	public static void main(String[] args) throws IOException, InterruptedException {
 		if (args.length == 0) throw  new RuntimeException("Argument : image file name");
 		
 		BufferedImage image = ImageIO.read(new File(args[0]));
@@ -143,32 +205,68 @@ public class H25Genetics {
 		}
 		
 		int[][] origine = new int[WIDTH][HEIGHT];
+		weight = new double[WIDTH][HEIGHT];
+		
 		for (int i = 0; i < WIDTH; i++) {
 			for (int j = 0; j < HEIGHT; j++) {
 				origine[i][j] = new Color(image.getRGB(i, j)).getRed();
+				weight[i][j] = 1.;
 			}
 		}
+		for (int i = 1; i < WIDTH - 1; i++) {
+			for (int j = 1; j < HEIGHT- 1; j++) {
+				double s = sq(origine[i][j] - origine[i-1][j])  
+				         + sq(origine[i][j] - origine[i+1][j])
+				         + sq(origine[i][j] - origine[i][j-1])
+				         + sq(origine[i][j] - origine[i][j+1]);
+				weight[i][j] += 0.1 * (1- Math.min(1, Math.max(0, 10_000 - s) / 10_000.));
+			}
+		}
+		for (int m = 5; m <= 10; m++) {
+			for (int i = m; i < WIDTH - m; i++) {
+				for (int j = m; j < HEIGHT- m; j++) {
+					double s = 0;  
+					for (int k = i - m; k < i + m; k++) {
+						for (int l = j - m; l < j + m; l++) {
+							s += sq(origine[i][j] - origine[k][l]);  
+						}
+					}
+					weight[i][j] += 0.2 * (1 - Math.min(1, Math.max(0, 500_000. - s) / (500_000.)));
+				}
+			}
+		}
+		
+		ExecutorService background = Executors.newFixedThreadPool(1, r -> new Thread(r, "Dump"));
 		
 		List<ADN> population = IntStream.rangeClosed(1, N_POP)
 				.mapToObj(__ -> ADN.generate())
 				.collect(Collectors.toList());
 		
 		int gen = 0 ;
-		for (int k$ = 0; k$ < 500; k$++) {
-			System.out.println("GENERATION " + gen);
-			Map<ADN, Double> scores = new HashMap<>(); 
-			for (ADN a : population) {
-				double eval = a.eval(origine);
-				scores.put(a, eval);
-			}
+		ADN allbest = null;
+		for (int k$ = 0; k$ < N_GEN; k$++) {
+			Map<ADN, Double> scores = new ConcurrentHashMap<>(); 
+			
+			population.parallelStream().forEach(a -> {
+				scores.put(a, a.eval(origine));
+			});
 			
 			ADN best = scores.keySet().stream().min(Comparator.comparing(k -> scores.get(k))).get();
-			dump(origine, best, scores.get(best), gen);
+			allbest = best;
+			System.out.println("GENERATION " + gen + "// " + scores.get(best));
+			
+			int gen$ = gen;
+			background.submit(() -> {
+				try {
+					dump(origine, best, scores.get(best), gen$);
+				} catch (IOException e) {
+					e.printStackTrace();
+					return;
+				}
+			}, "");
 			
 			List<ADN> nexts = new ArrayList<>();
 			nexts.add(best);
-			
-			System.out.println(scores.get(best) +"-"+  best.eval(origine)+"-"+ best.eval(origine));
 			
 			for (int i = 1; i < N_POP; i++) {
 				int a0 = random.nextInt(N_POP);
@@ -187,12 +285,18 @@ public class H25Genetics {
 			gen++;
 		}
 		
+		background.shutdown();
+		background.awaitTermination(1, TimeUnit.MINUTES);
+		
+		for (int i = 0; i < allbest.chromosomes.size(); i++) {
+			Chromosome c = allbest.chromosomes.get(i);
+			System.out.println(c.x + " " + c.y +" " + c.w + " " + c.h +" " + c.c + " " + c.a + " " + c.z + " " + i);
+		}
 	}
 
 
 	private static void dump(int[][] origine, ADN best, Double score, int gen) throws FileNotFoundException, IOException {
 		BufferedImage resultat = new BufferedImage(WIDTH * 2, HEIGHT, BufferedImage.TYPE_INT_ARGB);
-		System.out.println(" " + score);
 		int[][] tmp = new int[WIDTH][HEIGHT];
 		for (H25Genetics.Chromosome c : best.chromosomes) {
 			for (int i = c.x; i < c.x+c.w; i++) {
@@ -215,7 +319,7 @@ public class H25Genetics {
 		g2.drawString(String.format("%03d", gen), WIDTH + 79, 98);
 		g2.setColor(Color.white);
 		g2.drawString(String.format("%03d", gen), WIDTH + 80, 98);
-		ImageIO.write(resultat, "PNG", new FileOutputStream("./gen/h_"+String.format("%03d", gen)+".png"));
+		ImageIO.write(resultat, "PNG", new FileOutputStream("./gen/h_"+String.format("%04d", gen)+".png"));
 	}
 
 
