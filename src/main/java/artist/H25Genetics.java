@@ -24,13 +24,13 @@ import javax.imageio.ImageIO;
 
 public class H25Genetics {
 	
-	static int N_GEN = 10000;
+	static int N_GEN = 500;
 	static int N_RECTS = 50;
 	static int N_POP = 500;
 	static int WIDTH = 100;
 	static int HEIGHT = 100;
 	static double[][] weight;
-	static int MUTATION_PROB_PER_1000 = 5;
+	static int MUTATION_PROB_PER_1000 = 6;
 	
 	static final int MUTATION_Z     = 10;
 	static final int MUTATION_ALPHA = 20;
@@ -42,7 +42,7 @@ public class H25Genetics {
 
 	static final Random random = new Random(1982);
 	
-	static class Chromosome {
+	public static class Chromosome {
 		int x;
 		int y;
 		int w;
@@ -110,7 +110,7 @@ public class H25Genetics {
 		}
 	}
 	
-	static class ADN {
+	public static class ADN {
 		List<Chromosome> chromosomes;
 		
 		public ADN(List<Chromosome> chromosomes) {
@@ -243,45 +243,52 @@ public class H25Genetics {
 				.collect(Collectors.toList());
 		
 		int gen = 0 ;
+		int ndiff = 0;
 		ADN allbest = null;
 		for (int k$ = 0; k$ < N_GEN; k$++) {
 			Map<ADN, Double> scores = new ConcurrentHashMap<>(); 
 			
-			population.parallelStream().forEach(a -> {
+			population.stream().forEach(a -> {
 				scores.put(a, a.eval(origine));
 			});
 			
 			ADN best = scores.keySet().stream().min(Comparator.comparing(k -> scores.get(k))).get();
-			allbest = best;
 			System.out.println("GENERATION " + gen + "// " + scores.get(best));
 			
-			int gen$ = gen;
-			background.submit(() -> {
-				try {
-					dump(origine, best, scores.get(best), gen$);
-				} catch (IOException e) {
-					e.printStackTrace();
-					return;
-				}
-			}, "");
+			if (best != allbest) {
+				int gen$ = gen;
+				int ndiff$ = ndiff;
+				ndiff++;
+				background.submit(() -> {
+					try {
+						dump(origine, best, scores.get(best), gen$, ndiff$);
+					} catch (IOException e) {
+						e.printStackTrace();
+						return;
+					}
+				}, "");
+			}
 			
-			List<ADN> nexts = new ArrayList<>();
-			nexts.add(best);
 			
-			for (int i = 1; i < N_POP; i++) {
+			List<ADN> population$ = population;
+			population = IntStream.range(1, N_POP)
+			.parallel()
+			.mapToObj(__ -> {
 				int a0 = random.nextInt(N_POP);
 				int a1 = a0, a2 = a0, a3 = a0;
 				while (a1 == a0) a1 = random.nextInt(N_POP);
 				while (a2 == a0 || a2 == a1) a2 = random.nextInt(N_POP);
 				while (a3 == a0 || a3 == a1 || a3 == a2) a3 = random.nextInt(N_POP);
 				
-				ADN parentGauche = scores.get(population.get(a0)) < scores.get(population.get(a1)) ? population.get(a0) : population.get(a1); 
-				ADN parentDroite = scores.get(population.get(a2)) < scores.get(population.get(a3)) ? population.get(a2) : population.get(a3);
+				ADN parentGauche = scores.get(population$.get(a0)) < scores.get(population$.get(a1)) ? population$.get(a0) : population$.get(a1); 
+				ADN parentDroite = scores.get(population$.get(a2)) < scores.get(population$.get(a3)) ? population$.get(a2) : population$.get(a3);
 				
-				nexts.add(parentGauche.cross(parentDroite).mutate());
-			}
+				return parentGauche.cross(parentDroite).mutate();
+			})
+			.collect(Collectors.toList());
+			population.add(best);
 			
-			population = nexts;
+			allbest = best;
 			gen++;
 		}
 		
@@ -292,10 +299,12 @@ public class H25Genetics {
 			Chromosome c = allbest.chromosomes.get(i);
 			System.out.println(c.x + " " + c.y +" " + c.w + " " + c.h +" " + c.c + " " + c.a + " " + c.z + " " + i);
 		}
+		
+		
 	}
 
 
-	private static void dump(int[][] origine, ADN best, Double score, int gen) throws FileNotFoundException, IOException {
+	private static void dump(int[][] origine, ADN best, Double score, int gen, int ndiff) throws FileNotFoundException, IOException {
 		BufferedImage resultat = new BufferedImage(WIDTH * 2, HEIGHT, BufferedImage.TYPE_INT_ARGB);
 		int[][] tmp = new int[WIDTH][HEIGHT];
 		for (H25Genetics.Chromosome c : best.chromosomes) {
@@ -313,13 +322,13 @@ public class H25Genetics {
 		
 		Graphics2D g2 = resultat.createGraphics();
 		g2.setColor(Color.black);
-		g2.drawString(String.format("%03d", gen), WIDTH + 80, 99);
-		g2.drawString(String.format("%03d", gen), WIDTH + 80, 97);
-		g2.drawString(String.format("%03d", gen), WIDTH + 81, 98);
-		g2.drawString(String.format("%03d", gen), WIDTH + 79, 98);
+		g2.drawString(String.format("%03d", gen), WIDTH + 70, 99);
+		g2.drawString(String.format("%03d", gen), WIDTH + 70, 97);
+		g2.drawString(String.format("%03d", gen), WIDTH + 71, 98);
+		g2.drawString(String.format("%03d", gen), WIDTH + 69, 98);
 		g2.setColor(Color.white);
-		g2.drawString(String.format("%03d", gen), WIDTH + 80, 98);
-		ImageIO.write(resultat, "PNG", new FileOutputStream("./gen/h_"+String.format("%04d", gen)+".png"));
+		g2.drawString(String.format("%03d", gen), WIDTH + 70, 98);
+		ImageIO.write(resultat, "PNG", new FileOutputStream("./gen/h_"+String.format("%04d", ndiff)+".png"));
 	}
 
 
