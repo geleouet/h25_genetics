@@ -14,8 +14,8 @@ import java.util.Scanner;
 
 import javax.imageio.ImageIO;
 
-import artist.H25Genetics.ADN;
-import artist.H25Genetics.Chromosome;
+import artist.H25GeneticsOvals.ADN;
+import artist.H25GeneticsOvals.Chromosome;
 import ws.schild.jave.Encoder;
 import ws.schild.jave.EncoderException;
 import ws.schild.jave.MultimediaObject;
@@ -129,6 +129,31 @@ public class CreateMovie {
 		} catch (IllegalArgumentException | EncoderException e) {
 			throw new RuntimeException(e);
 		}
+		/**/
+		try {
+			String filename ="./gen/o.mp4";
+			
+			Encoder encoder = new Encoder();
+			EncodingAttributes attrs = new EncodingAttributes();
+			VideoAttributes videoAttributes = new VideoAttributes();
+			videoAttributes.setFrameRate(50);
+			attrs.setVideoAttributes(videoAttributes);
+			
+			MultimediaObject multimediaObject0 = new MultimediaObject(new File("./gen/m_0000.png"));
+			MultimediaInfo info = multimediaObject0.getInfo();
+			info.getVideo().setFrameRate(50.f);
+			
+			MultimediaObject multimediaObject = new MultimediaObject(new File("./gen/m_%04d.png")) {
+				@Override
+				public MultimediaInfo getInfo() {
+					return info;
+				}
+			};
+			encoder.encode(multimediaObject , new File(filename), attrs);
+			
+		} catch (IllegalArgumentException | EncoderException e) {
+			throw new RuntimeException(e);
+		}
 	}
 	
 	
@@ -137,12 +162,8 @@ public class CreateMovie {
 		int[][] tmp = new int[WIDTH][HEIGHT];
 		List<Chromosome> chromosomes = adn.chromosomes;
 		for (int k = 0; k <= w && k < chromosomes.size(); k++) {
-			H25Genetics.Chromosome c = chromosomes.get(k);
-			for (int i = c.x; i < c.x+c.w; i++) {
-				for (int j = c.y; j < c.y+c.h; j++) {
-						int o = tmp[i][j];
-						tmp[i][j] = (int) (c.c * (c.a)/255. + o *(255. - c.a)/255.);
-		} }
+			Chromosome c = chromosomes.get(k);
+			c.draw(tmp);
 		}
 		for (int i = 0; i < WIDTH; i++) {
 			for (int j = 0; j < HEIGHT; j++) {
